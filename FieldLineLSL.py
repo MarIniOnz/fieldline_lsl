@@ -33,21 +33,23 @@ class FieldLineDataType(Enum):
     """
     Represent the three known datatypes in sensor data (the last element XX in sensor names, e.g. 00:01:XX)
     """
-    ADC = '0'
-    OPEN_LOOP = '28'
-    CLOSED_LOOP = '50'
+
+    ADC = "0"
+    OPEN_LOOP = "28"
+    CLOSED_LOOP = "50"
 
 
 class Unit_T_Factor(Enum):
     """
     Represent common orders of magnitude and their factors relative to SI unit Tesla
     """
+
     T = 1  # Tesla
-    mT = 1E3  # milliTesla
-    uT = 1E6  # microTesla
-    nT = 1E9  # nanoTesla
-    pT = 1E12  # picoTesla
-    fT = 1E15  # femtoTesla
+    mT = 1e3  # milliTesla
+    uT = 1e6  # microTesla
+    nT = 1e9  # nanoTesla
+    pT = 1e12  # picoTesla
+    fT = 1e15  # femtoTesla
 
 
 class FieldLineLSL(FieldLineService):
@@ -56,8 +58,17 @@ class FieldLineLSL(FieldLineService):
     Initialized with all relevant information for connecting to one or multiple (daisy-chained) chassis.
     See the readme for further information
     """
-    def __init__(self, ip_list: List[str], stream_name: str = "FieldLineOPM", source_id: str = "FieldLineOPM_sid",
-                 stream_type='MAG', log_heartbeat: int = 60, unit_T: Unit_T_Factor = Unit_T_Factor.fT, prefix: str = "",):
+
+    def __init__(
+        self,
+        ip_list: List[str],
+        stream_name: str = "FieldLineOPM",
+        source_id: str = "FieldLineOPM_sid",
+        stream_type="MAG",
+        log_heartbeat: int = 60,
+        unit_T: Unit_T_Factor = Unit_T_Factor.fT,
+        prefix: str = "",
+    ):
         """
         Initialize the FieldLineLSL instance
         :param ip_list: List of ip addresses as strings (without ports)
@@ -83,7 +94,9 @@ class FieldLineLSL(FieldLineService):
         self._channel_names: list = None  # set in self._build_channel_names()
 
         if unit_T not in Unit_T_Factor:
-            logger.warning(f"{unit_T=} is not a known unit. Please provide an instance of {Unit_T_Factor}")
+            logger.warning(
+                f"{unit_T=} is not a known unit. Please provide an instance of {Unit_T_Factor}"
+            )
             self.unit_T: Unit_T_Factor = Unit_T_Factor.T
         else:
             self.unit_T: Unit_T_Factor = unit_T
@@ -96,16 +109,27 @@ class FieldLineLSL(FieldLineService):
         self.streaming_thread: Thread = None
         self.running: bool = False
 
-        self._calibration_dict: dict = None  # Calibration values of all channels to compute data in correct unit
+        self._calibration_dict: dict = (
+            None  # Calibration values of all channels to compute data in correct unit
+        )
 
         self.log_heartbeat: int = log_heartbeat
         self.t_stream_start: int = None
 
-        self.first_lsl_timestamp = None  # Timestamp of pylsl.local_clock() to sync with chassis_timestamps
-        self.first_chassis_timestamp = None  # FieldLine chassis system's timestamp of first dataframe to arrive
+        self.first_lsl_timestamp = (
+            None  # Timestamp of pylsl.local_clock() to sync with chassis_timestamps
+        )
+        self.first_chassis_timestamp = (
+            None  # FieldLine chassis system's timestamp of first dataframe to arrive
+        )
 
-    def init_sensors(self, skip_restart: bool = True, skip_zeroing: bool = True, closed_loop_mode: bool = True,
-                     adcs: Union[bool, List[int]] = False):
+    def init_sensors(
+        self,
+        skip_restart: bool = True,
+        skip_zeroing: bool = True,
+        closed_loop_mode: bool = True,
+        adcs: Union[bool, List[int]] = False,
+    ):
         """
         Initialize the sensors. Steps can be skipped if the sensors already are zeroed or this is done in parallel using
         the FieldLine Recorder
@@ -121,7 +145,9 @@ class FieldLineLSL(FieldLineService):
         if not skip_restart:
             self.restart_sensors(connect_to_sensor_dict)
 
-        self.set_closed_loop(closed_loop_mode)  # This is blocking until closed_loop is set
+        self.set_closed_loop(
+            closed_loop_mode
+        )  # This is blocking until closed_loop is set
 
         if not skip_zeroing:
             self.zero_sensors(connect_to_sensor_dict)
@@ -137,14 +163,18 @@ class FieldLineLSL(FieldLineService):
         :param adcs:
         :return:
         """
-        chassis_list = [chassis_dict['chassis_id'] for chassis_dict in self.get_chassis_desc_dicts()]
+        chassis_list = [
+            chassis_dict["chassis_id"] for chassis_dict in self.get_chassis_desc_dicts()
+        ]
         start_adc_on_chassis = []
 
         if isinstance(adcs, bool):
             if adcs:
                 start_adc_on_chassis = chassis_list
         elif isinstance(adcs, list):
-            start_adc_on_chassis = [chassis_id for chassis_id in adcs if chassis_id in chassis_list]
+            start_adc_on_chassis = [
+                chassis_id for chassis_id in adcs if chassis_id in chassis_list
+            ]
 
         for chassis_id in start_adc_on_chassis:
             logger.info(f"Starting ADCs on chassis {chassis_id}")
@@ -176,8 +206,12 @@ class FieldLineLSL(FieldLineService):
         :param sensors: dictionary of {chassis_id: [list of sensor_ids], ...}
         """
         logger.info(f"Restarting sensors {sensors}")
-        super().restart_sensors(sensors, on_next=self.callback_restarted, on_error=self.callback_error,
-                                on_completed=lambda: self.callback_completed("Restart"))
+        super().restart_sensors(
+            sensors,
+            on_next=self.callback_restarted,
+            on_error=self.callback_error,
+            on_completed=lambda: self.callback_completed("Restart"),
+        )
         logger.info(f"Waiting for restart to be complete")
 
         self.done.wait()
@@ -198,15 +232,23 @@ class FieldLineLSL(FieldLineService):
         :param sensors: dictionary of {chassis_id: [list of sensor_ids], ...}
         """
         logger.info(f"Coarse zeroing sensors {sensors}")
-        self.coarse_zero_sensors(sensors, on_next=self.callback_coarse_zeroed, on_error=self.callback_error,
-                                 on_completed=lambda: self.callback_completed("Coarse zeroing"))
+        self.coarse_zero_sensors(
+            sensors,
+            on_next=self.callback_coarse_zeroed,
+            on_error=self.callback_error,
+            on_completed=lambda: self.callback_completed("Coarse zeroing"),
+        )
         logger.info(f"Waiting for coarse zeroing to be complete")
         self.done.wait()
         self.done.clear()
 
         logger.info(f"Fine zeroing sensors {sensors}")
-        self.fine_zero_sensors(sensors, on_next=self.callback_fine_zeroed, on_error=self.callback_error,
-                               on_completed=lambda: self.callback_completed("Fine zeroing"))
+        self.fine_zero_sensors(
+            sensors,
+            on_next=self.callback_fine_zeroed,
+            on_error=self.callback_error,
+            on_completed=lambda: self.callback_completed("Fine zeroing"),
+        )
         logger.info("Waiting for fine zeroing to be complete")
         self.done.wait()
         self.done.clear()
@@ -224,8 +266,10 @@ class FieldLineLSL(FieldLineService):
 
         logger.info(f"Starting streaming Thread")
         self.running = True
-        self.streaming_thread = Thread(target=self.thread_stream_data,
-                                       name=f"FieldLine LSL Streaming ({self.stream_name})")
+        self.streaming_thread = Thread(
+            target=self.thread_stream_data,
+            name=f"FieldLine LSL Streaming ({self.stream_name})",
+        )
         self.streaming_thread.start()
 
     def stop_streaming(self):
@@ -259,7 +303,9 @@ class FieldLineLSL(FieldLineService):
         """
         self.t_stream_start = pylsl.local_clock()
         next_heartbeat = self.t_stream_start
-        logger.info(f"Starting to stream data on {self.stream_name} at t_local={self.t_stream_start}")
+        logger.info(
+            f"Starting to stream data on {self.stream_name} at t_local={self.t_stream_start}"
+        )
 
         while self.running:
             now = pylsl.local_clock()
@@ -267,18 +313,24 @@ class FieldLineLSL(FieldLineService):
             if self.log_heartbeat and now >= next_heartbeat:
                 next_heartbeat += self.log_heartbeat
                 logger.info(
-                    f"Streaming data on {self.stream_name} since {now - self.t_stream_start:.1f} seconds (t_local={now})")
+                    f"Streaming data on {self.stream_name} since {now - self.t_stream_start:.1f} seconds (t_local={now})"
+                )
             try:
                 data = self.data_queue.get(block=True, timeout=1)
             except Empty as e:
                 logger.warning(
-                    f"No data was received in time by streaming Thread after {now - self.t_stream_start:.1f} (t_local={now})")
+                    f"No data was received in time by streaming Thread after {now - self.t_stream_start:.1f} (t_local={now})"
+                )
                 continue
 
-            sample_timestamp = data['timestamp']  # We don't use this because LSL generates its own timestamps
-            data_frames = data['data_frames']
-            sample = [data_frames[channel_name]['data'] * self._calibration_dict[channel_name] for channel_name in
-                      self.channel_names]
+            sample_timestamp = data[
+                "timestamp"
+            ]  # We don't use this because LSL generates its own timestamps
+            data_frames = data["data_frames"]
+            sample = [
+                data_frames[channel_name]["data"] * self._calibration_dict[channel_name]
+                for channel_name in self.channel_names
+            ]
 
             try:
                 timestamp = self.get_timestamp(sample_timestamp)
@@ -289,8 +341,10 @@ class FieldLineLSL(FieldLineService):
 
         stream_stop = pylsl.local_clock()
 
-        logger.info(f"Stopping to stream on {self.stream_name} after {stream_stop - self.t_stream_start} seconds"
-                    f" at t_local={stream_stop}")
+        logger.info(
+            f"Stopping to stream on {self.stream_name} after {stream_stop - self.t_stream_start} seconds"
+            f" at t_local={stream_stop}"
+        )
         self.t_stream_start = None
 
     def _set_calibration_dict(self):
@@ -312,13 +366,20 @@ class FieldLineLSL(FieldLineService):
 
         self.channel_count = len(self.get_channels())
 
-        self.stream_info = pylsl.StreamInfo(self.stream_name, type=self.stream_type, channel_count=self.channel_count,
-                                            nominal_srate=1000, channel_format=pylsl.cf_float32,
-                                            source_id=self.source_id)
+        self.stream_info = pylsl.StreamInfo(
+            self.stream_name,
+            type=self.stream_type,
+            channel_count=self.channel_count,
+            nominal_srate=1000,
+            channel_format=pylsl.cf_float32,
+            source_id=self.source_id,
+        )
 
         desc = self.stream_info.desc()
-        desc.append_child_value('manufacturer', "FieldLine Inc.")
-        desc.append_child_value('fieldline_api-version', importlib.metadata.version('fieldline_api'))
+        desc.append_child_value("manufacturer", "FieldLine Inc.")
+        desc.append_child_value(
+            "fieldline_api-version", importlib.metadata.version("fieldline_api")
+        )
 
         desc_chassis_all = desc.append_child("chassis")
         for chassis_dict in self.get_chassis_desc_dicts():
@@ -328,7 +389,7 @@ class FieldLineLSL(FieldLineService):
 
         desc_channels = desc.append_child("channels")
         for channel_dict in self.get_channel_desc_dicts():
-            desc_channel = desc_channels.append_child('channel')
+            desc_channel = desc_channels.append_child("channel")
             for key, value in channel_dict.items():
                 desc_channel.append_child_value(key, str(value))
 
@@ -341,7 +402,7 @@ class FieldLineLSL(FieldLineService):
             chassis_id = self.data_source.chassis_name_to_id[chassis_name]
             chassis_dicts.append(self.get_chassis_desc_dict(chassis_id))
 
-        chassis_dicts.sort(key=lambda chassis_dict: chassis_dict['chassis_id'])
+        chassis_dicts.sort(key=lambda chassis_dict: chassis_dict["chassis_id"])
         return chassis_dicts
 
     def get_chassis_desc_dict(self, chassis_id):
@@ -352,7 +413,7 @@ class FieldLineLSL(FieldLineService):
             name=self.data_source.get_chassis_name_from_id(chassis_id),
             chassis_id=chassis_id,
             serial=self.get_chassis_serial_number(chassis_id),
-            version=self.get_version(chassis_id)
+            version=self.get_version(chassis_id),
         )
 
     def get_channel_desc_dict(self, channel: ChannelInfo):
@@ -364,30 +425,35 @@ class FieldLineLSL(FieldLineService):
         chassis_id = channel.chassis_id
         sensor_id = channel.sensor_id
 
-        channel_dict = dict(label=channel.name,
-                            chassis_id=chassis_id,
-                            sensor_id=sensor_id,
-                            calibration=channel.calibration,
-                            )
+        channel_dict = dict(
+            label=channel.name,
+            chassis_id=chassis_id,
+            sensor_id=sensor_id,
+            calibration=channel.calibration,
+        )
 
         if self.get_data_type(channel) == FieldLineDataType.ADC:
-            channel_dict.update(type='misc', unit="V", mode="ADC")
+            channel_dict.update(type="misc", unit="V", mode="ADC")
         elif self.get_data_type(channel) == FieldLineDataType.CLOSED_LOOP:
-            channel_dict.update(type='mag', unit=self.unit_T.name, mode="Closed Loop")
+            channel_dict.update(type="mag", unit=self.unit_T.name, mode="Closed Loop")
         elif self.get_data_type(channel) == FieldLineDataType.OPEN_LOOP:
-            channel_dict.update(type='mag', unit=self.unit_T.name, mode="Open Loop")
+            channel_dict.update(type="mag", unit=self.unit_T.name, mode="Open Loop")
         else:
-            channel_dict.update(type='misc', unit="?", mode="Unknown")
+            channel_dict.update(type="misc", unit="?", mode="Unknown")
 
         if self.is_OPM_type(channel):
             serial_card, serial_sensor = self.get_serial_numbers(chassis_id, sensor_id)
             field_X, field_Y, field_Z = self.get_fields(chassis_id, sensor_id)
 
-            channel_dict.update(serial_card=serial_card,
-                                serial_sensor=serial_sensor,
-                                field_X=field_X, field_Y=field_Y, field_Z=field_Z,
-                                location=channel.location,
-                                unit_T_factor=self.unit_T_factor)
+            channel_dict.update(
+                serial_card=serial_card,
+                serial_sensor=serial_sensor,
+                field_X=field_X,
+                field_Y=field_Y,
+                field_Z=field_Z,
+                location=channel.location,
+                unit_T_factor=self.unit_T_factor,
+            )
 
         return channel_dict
 
@@ -403,7 +469,10 @@ class FieldLineLSL(FieldLineService):
             return None
 
     def is_OPM_type(self, channel):
-        return self.get_data_type(channel) in [FieldLineDataType.CLOSED_LOOP, FieldLineDataType.OPEN_LOOP]
+        return self.get_data_type(channel) in [
+            FieldLineDataType.CLOSED_LOOP,
+            FieldLineDataType.OPEN_LOOP,
+        ]
 
     def get_channel_desc_dicts(self):
         return [self.get_channel_desc_dict(channel) for channel in self.get_channels()]
@@ -429,7 +498,7 @@ class FieldLineLSL(FieldLineService):
             # If this is the first sample, save the chassis system timestamp and this device's reference time
             # this is used in self.get_timestamp()
             self.first_lsl_timestamp = pylsl.local_clock()
-            self.first_chassis_timestamp = data['timestamp']
+            self.first_chassis_timestamp = data["timestamp"]
 
         self.data_queue.put(data)
 
@@ -440,13 +509,20 @@ class FieldLineLSL(FieldLineService):
         :param chassis_timestamp:
         :return:
         """
-        return self.first_lsl_timestamp + (chassis_timestamp - self.first_chassis_timestamp) / 25000.0
+        return (
+            self.first_lsl_timestamp
+            + (chassis_timestamp - self.first_chassis_timestamp) / 25000.0
+        )
 
     def get_sensors(self):
         return self.data_source.get_sensors()
 
     def get_channels(self):
-        return [channel for sensor in self.get_sensors() for channel in sensor.get_channels()]
+        return [
+            channel
+            for sensor in self.get_sensors()
+            for channel in sensor.get_channels()
+        ]
 
     def _build_channel_names(self):
         """
